@@ -1,5 +1,5 @@
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer,EarlyStoppingCallback
 from peft import LoraConfig, get_peft_model
 from datasets import load_dataset
 
@@ -46,27 +46,34 @@ training_args = TrainingArguments(
     output_dir=f"./fine_tuned/{CONTACT_NAME}",
     per_device_train_batch_size=2,        # Increase batch size if memory allows
     gradient_accumulation_steps=4,          # Fewer accumulation steps due to larger batch size
-    num_train_epochs=15,
+    num_train_epochs=3,
     learning_rate=2e-4,
     save_steps=100,
     save_total_limit=2,
     logging_steps=10,
     remove_unused_columns=False,
     fp16=True,                            # Enable mixed precision for CUDA GPUs
-    dataloader_num_workers=4              # Use multiple workers to speed up data loading
+    dataloader_num_workers=4,
+    evaluation_strategy = "epoch",  # Evaluate at the end of each epoch
+    save_strategy = "epoch",  # Save best model at each epoch
+    load_best_model_at_end = True,  # Ensure best model is used
+    metric_for_best_model = "loss",  # Track loss for early stopping
+    greater_is_better = False,
+        # Use multiple workers to speed up data loading
 )
 
 trainer = Trainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_dataset["train"],
+    callbacks=[EarlyStoppingCallback(early_stopping_patience=3)]
 )
 
 # Start training
 trainer.train()
 
 # Save the fine-tuned LoRA adapter and tokenizer
-model.save_pretrained(f"./fine_tuned2/{CONTACT_NAME}")
-tokenizer.save_pretrained(f"./fine_tuned2/{CONTACT_NAME}")
+model.save_pretrained(f"./fine_tuned/{CONTACT_NAME}")
+tokenizer.save_pretrained(f"./fine_tuned/{CONTACT_NAME}")
 
-print(f"✅ Fine-tuning completed for {CONTACT_NAME}! Weights saved in './fine_tuned2/{CONTACT_NAME}'")
+print(f"✅ Fine-tuning completed for {CONTACT_NAME}! Weights saved in './fine_tuned/{CONTACT_NAME}'")
