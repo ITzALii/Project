@@ -54,11 +54,7 @@ training_args = TrainingArguments(
     remove_unused_columns=False,
     fp16=True,                            # Enable mixed precision for CUDA GPUs
     dataloader_num_workers=4,
-    eval_strategy = "epoch",  # Evaluate at the end of each epoch
-    save_strategy = "epoch",  # Save best model at each epoch
-    load_best_model_at_end = True,  # Ensure best model is used
-    metric_for_best_model = "loss",  # Track loss for early stopping
-    greater_is_better = False,
+   
         # Use multiple workers to speed up data loading
 )
 
@@ -66,7 +62,7 @@ trainer = Trainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_dataset["train"],
-    callbacks=[EarlyStoppingCallback(early_stopping_patience=3)]
+
 )
 
 # Start training
