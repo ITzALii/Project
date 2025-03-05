@@ -17,7 +17,7 @@ def tokenize_function(examples):
     return tokenized
 
 # Load base model and tokenizer from your local cache or HF Hub path
-MODEL_NAME = "meta-llama/Llama-3.2-8B-Instruct"
+MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_NAME,
