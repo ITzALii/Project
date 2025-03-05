@@ -15,7 +15,9 @@ model.to(device)
 print("Interactive Prompt Mode. Type 'quit' or 'exit' to end.")
 while True:
     # Get user prompt from the terminal
-    prompt = input("\nPrompt: ")
+    prompt="respond to this message like Ali:"
+    rprompt= input("\nPrompt: ")
+    prompt = prompt+ rprompt
     if prompt.lower() in ["quit", "exit"]:
         break
 
