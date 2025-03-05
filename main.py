@@ -44,7 +44,7 @@ model = get_peft_model(model, lora_config)
 # Training settings optimized for an RTX 3090:
 training_args = TrainingArguments(
     output_dir=f"./fine_tuned/{CONTACT_NAME}",
-    per_device_train_batch_size=2,        # Increase batch size if memory allows
+    per_device_train_batch_size=4,        # Increase batch size if memory allows
     gradient_accumulation_steps=8,          # Fewer accumulation steps due to larger batch size
     num_train_epochs=10,
     learning_rate=2e-4,
