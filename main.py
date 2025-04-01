@@ -96,7 +96,7 @@ model = AutoModelForCausalLM.from_pretrained(
 )
 
 # Modell für Quantisiertes Training vorbereiten
-model = prepare_model_for_kbit_training(model)
+
 
 # LoRA-Konfiguration
 lora_config = LoraConfig(
