@@ -79,12 +79,6 @@ tokenized_dataset = formatted_dataset.map(
 )
 
 # 4-bit Quantisierung für effizienteres Multi-GPU Training
-quant_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.bfloat16
-)
 
 # Multi-GPU Device-Mapping
 if num_gpus > 1:
@@ -98,7 +92,6 @@ else:
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_NAME,
     device_map=device_map,
-    quantization_config=quant_config,
     torch_dtype=torch.bfloat16
 )
 
