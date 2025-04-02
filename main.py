@@ -120,7 +120,7 @@ gradient_accumulation_steps = 8 // num_gpus if num_gpus > 0 else 8
 # DeepSpeed Konfiguration für Multi-GPU
 deepspeed_config = {
     "fp16": {
-        "enabled": True
+        "enabled": "auto"
     },
     "zero_optimization": {
         "stage": 2,
