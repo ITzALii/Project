@@ -3,10 +3,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments,
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from datasets import load_dataset
 import os
-from sklearn.model_selection import train_test_split
-import torch.distributed as dist
 
-# Prüfe Multi-GPU Verfügbarkeit
+# Prüfe GPU Verfügbarkeit
 if torch.cuda.is_available():
     num_gpus = torch.cuda.device_count()
     print(f"Found {num_gpus} GPUs")
@@ -18,7 +16,7 @@ else:
 MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 tokenizer.pad_token = tokenizer.eos_token
-tokenizer.padding_side = "right"  # Wichtig für korrekte Padding-Position
+tokenizer.padding_side = "right"
 
 # Dataset laden
 CONTACT_NAME = "max"
@@ -78,7 +76,7 @@ tokenized_dataset = formatted_dataset.map(
     remove_columns=["text", "messages"]
 )
 
-# 4-bit Quantisierung für effizienteres Multi-GPU Training
+# 4-bit Quantisierung für effizienteres Training
 quant_config = BitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_use_double_quant=True,
@@ -86,18 +84,9 @@ quant_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.bfloat16
 )
 
-# Multi-GPU Device-Mapping
-if num_gpus > 1:
-    # Automatisches Device-Mapping für Multi-GPU
-    device_map = "auto"
-else:
-    # Einfaches Mapping für Single-GPU
-    device_map = {"": 0} if torch.cuda.is_available() else "cpu"
-
-# Modell mit Quantisierung laden
+# DeepSpeed-Kompatible Konfiguration: nicht device_map="auto" verwenden
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_NAME,
-    device_map=device_map,
     quantization_config=quant_config,
     torch_dtype=torch.bfloat16
 )
@@ -112,7 +101,7 @@ lora_config = LoraConfig(
     lora_dropout=0.05,
     bias="none",
     task_type="CAUSAL_LM",
-    # Ziele alle wichtigen Module für bessere Anpassung
+    # Ziele wichtige Module für bessere Anpassung
     target_modules=[
         "q_proj", "k_proj", "v_proj", "o_proj", 
         "gate_proj", "up_proj", "down_proj"
@@ -120,16 +109,36 @@ lora_config = LoraConfig(
 )
 
 model = get_peft_model(model, lora_config)
+print(f"Model trainable parameters: {model.print_trainable_parameters()}")
 
-# Optimierte Trainingsparameter für Multi-GPU
-# Berechne Batch-Größe und Gradient-Akkumulationsschritte basierend auf verfügbaren GPUs
+# Optimierte Trainingsparameter für DeepSpeed
+# Berechne Batch-Größe basierend auf verfügbaren GPUs
 base_batch_size = 2
-if num_gpus > 1:
-    per_device_batch_size = base_batch_size
-    gradient_accumulation_steps = 4
-else:
-    per_device_batch_size = base_batch_size
-    gradient_accumulation_steps = 8
+per_device_batch_size = base_batch_size
+gradient_accumulation_steps = 8 // num_gpus if num_gpus > 0 else 8
+
+# DeepSpeed Konfiguration für Multi-GPU
+deepspeed_config = {
+    "fp16": {
+        "enabled": True
+    },
+    "zero_optimization": {
+        "stage": 2,
+        "offload_optimizer": {
+            "device": "cpu"
+        },
+        "contiguous_gradients": True,
+        "overlap_comm": True
+    },
+    "gradient_accumulation_steps": gradient_accumulation_steps,
+    "gradient_clipping": 1.0,
+    "train_batch_size": per_device_batch_size * num_gpus * gradient_accumulation_steps if num_gpus > 0 else per_device_batch_size * gradient_accumulation_steps
+}
+
+# Speichere DeepSpeed Konfiguration in Datei
+import json
+with open("ds_config.json", "w") as f:
+    json.dump(deepspeed_config, f)
 
 training_args = TrainingArguments(
     output_dir=f"./fine_tuned/{CONTACT_NAME}",
@@ -145,16 +154,17 @@ training_args = TrainingArguments(
     save_total_limit=3,
     logging_steps=10,
     remove_unused_columns=False,
-    fp16=True,
     optim="adamw_torch",
     load_best_model_at_end=True,
     metric_for_best_model="eval_loss",
-    # Multi-GPU Konfiguration
-    local_rank=-1,  # Wird automatisch gesetzt, wenn mit torch.distributed.launch gestartet
+    # DeepSpeed Konfiguration
+    deepspeed="ds_config.json",
+    # DDP Konfiguration
+    local_rank=-1,  # Wird automatisch gesetzt
     ddp_find_unused_parameters=False,
     ddp_bucket_cap_mb=50,
     dataloader_num_workers=4 if num_gpus > 1 else 2,
-    gradient_checkpointing=True  # Hilfreich bei Multi-GPU für Speichereffizienz
+    gradient_checkpointing=True  # Hilfreich für Speichereffizienz
 )
 
 trainer = Trainer(
@@ -218,7 +228,8 @@ test_prompts = [
 ]
 
 # Modell nur auf dem primären Prozess testen, wenn Multi-GPU verwendet wird
-is_main_process = not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0
+local_rank = int(os.environ.get("LOCAL_RANK", -1))
+is_main_process = local_rank in [-1, 0]
 if is_main_process:
     print("Testing the model...")
     test_model(model, tokenizer, test_prompts)
